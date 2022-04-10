@@ -28,6 +28,7 @@ from tornado import escape, gen, web
 from tornado.concurrent import run_on_executor
 
 from database import CaptchaResource, Redis
+from utils import add_cf_blacklist
 
 escape.json_encode = lambda value: json.dumps(value, ensure_ascii=False)
 logging.basicConfig(level=logging.INFO)
@@ -76,7 +77,12 @@ class SecurityHandler(web.RequestHandler):
         self.r.incr(ip)
         count = int(self.r.get(ip))
         # ban rule: (count-10)*600
-        ex = 120 if count <= 10 else (count - 10) * 600
+        if count <= 10:
+            ex = 120
+        else:
+            ex = (count - 10) * 600
+        if count >= 50:
+            add_cf_blacklist(ip)
         self.r.set(ip, count, ex)
         user = self.get_current_user()
         if user:
@@ -98,7 +104,7 @@ class SecurityHandler(web.RequestHandler):
             return True
 
 
-class BaseHandler(SecurityHandler):
+class BaseHandler(web.RequestHandler):
     executor = ThreadPoolExecutor(200)
     class_name = f"Fake{adapter}Resource"
     adapter_module = importlib.import_module(f"{adapter}")
